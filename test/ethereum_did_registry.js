@@ -326,8 +326,8 @@ contract("EthereumDIDRegistry", function(accounts) {
               stripHexPrefix(delegate) +
               leftPad(new BN(86400).toString(16))
           );
-          tx1 = await didReg.addDelegateSigned(
-            signerAddress,
+          tx1 = await didReg.methods['addDelegateSigned(address,uint8,bytes32,bytes32,bytes32,address,uint256)'](
+              signerAddress,
             sig.v,
             sig.r,
             sig.s,
@@ -655,7 +655,7 @@ contract("EthereumDIDRegistry", function(accounts) {
               stringToBytes32("encryptionKey") +
               Buffer.from("mykey").toString("hex")
           );
-          tx = await didReg.revokeAttributeSigned(
+          tx = await didReg.methods['revokeAttributeSigned(address,uint8,bytes32,bytes32,bytes32,bytes)'](
             signerAddress,
             sig.v,
             sig.r,

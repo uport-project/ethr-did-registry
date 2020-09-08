@@ -109,6 +109,11 @@ contract EthereumDIDRegistry {
     changeOwner(identity, checkSignature(identity, sigV, sigR, sigS, hash), newOwner);
   }
 
+  function changeOwnerSigned(address identity, bytes memory signature, address newOwner) public {
+    bytes32 hash = keccak256(abi.encodePacked(byte(0x19), byte(0), this, nonce[identityOwner(identity)], identity, "changeOwner", newOwner));
+    changeOwner(identity, checkSignature(identity, hash, signature), newOwner);
+  }
+
   function addDelegate(address identity, address actor, bytes32 delegateType, address delegate, uint validity) internal onlyOwner(identity, actor) {
     delegates[identity][keccak256(abi.encodePacked(delegateType))][delegate] = now + validity;
     emit DIDDelegateChanged(identity, delegateType, delegate, now + validity, changed[identity]);
@@ -122,6 +127,11 @@ contract EthereumDIDRegistry {
   function addDelegateSigned(address identity, uint8 sigV, bytes32 sigR, bytes32 sigS, bytes32 delegateType, address delegate, uint validity) public {
     bytes32 hash = keccak256(abi.encodePacked(byte(0x19), byte(0), this, nonce[identityOwner(identity)], identity, "addDelegate", delegateType, delegate, validity));
     addDelegate(identity, checkSignature(identity, sigV, sigR, sigS, hash), delegateType, delegate, validity);
+  }
+
+  function addDelegateSigned(address identity, bytes memory signature, bytes32 delegateType, address delegate, uint validity) public {
+    bytes32 hash = keccak256(abi.encodePacked(byte(0x19), byte(0), this, nonce[identityOwner(identity)], identity, "addDelegate", delegateType, delegate, validity));
+    addDelegate(identity, checkSignature(identity, hash, signature), delegateType, delegate, validity);
   }
 
   function revokeDelegate(address identity, address actor, bytes32 delegateType, address delegate) internal onlyOwner(identity, actor) {
@@ -139,6 +149,11 @@ contract EthereumDIDRegistry {
     revokeDelegate(identity, checkSignature(identity, sigV, sigR, sigS, hash), delegateType, delegate);
   }
 
+  function revokeDelegateSigned(address identity, bytes memory signature, bytes32 delegateType, address delegate) public {
+    bytes32 hash = keccak256(abi.encodePacked(byte(0x19), byte(0), this, nonce[identityOwner(identity)], identity, "revokeDelegate", delegateType, delegate));
+    revokeDelegate(identity, checkSignature(identity, hash, signature), delegateType, delegate);
+  }
+
   function setAttribute(address identity, address actor, bytes32 name, bytes memory value, uint validity ) internal onlyOwner(identity, actor) {
     emit DIDAttributeChanged(identity, name, value, now + validity, changed[identity]);
     changed[identity] = block.number;
@@ -153,6 +168,11 @@ contract EthereumDIDRegistry {
     setAttribute(identity, checkSignature(identity, sigV, sigR, sigS, hash), name, value, validity);
   }
 
+  function setAttributeSigned(address identity, bytes memory signature, bytes32 name, bytes memory value, uint validity) public {
+    bytes32 hash = keccak256(abi.encodePacked(byte(0x19), byte(0), this, nonce[identityOwner(identity)], identity, "setAttribute", name, value, validity));
+    setAttribute(identity, checkSignature(identity, hash, signature), name, value, validity);
+  }
+
   function revokeAttribute(address identity, address actor, bytes32 name, bytes memory value ) internal onlyOwner(identity, actor) {
     emit DIDAttributeChanged(identity, name, value, 0, changed[identity]);
     changed[identity] = block.number;
@@ -165,6 +185,11 @@ contract EthereumDIDRegistry {
  function revokeAttributeSigned(address identity, uint8 sigV, bytes32 sigR, bytes32 sigS, bytes32 name, bytes memory value) public {
     bytes32 hash = keccak256(abi.encodePacked(byte(0x19), byte(0), this, nonce[identityOwner(identity)], identity, "revokeAttribute", name, value)); 
     revokeAttribute(identity, checkSignature(identity, sigV, sigR, sigS, hash), name, value);
+  }
+
+ function revokeAttributeSigned(address identity, bytes memory signature, bytes32 name, bytes memory value) public {
+    bytes32 hash = keccak256(abi.encodePacked(byte(0x19), byte(0), this, nonce[identityOwner(identity)], identity, "revokeAttribute", name, value)); 
+    revokeAttribute(identity, checkSignature(identity, hash, signature), name, value);
   }
 
 }
