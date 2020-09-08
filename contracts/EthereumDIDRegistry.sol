@@ -7,6 +7,8 @@ import "@openzeppelin/contracts/cryptography/ECDSA.sol";
 
 contract EthereumDIDRegistry {
   
+  bytes4 internal constant _ERC1271_MAGICVALUE = 0x1626ba7e;
+
   mapping(address => address) public owners;
   mapping(address => mapping(bytes32 => mapping(address => uint))) public delegates;
   mapping(address => uint) public changed;
@@ -74,8 +76,8 @@ contract EthereumDIDRegistry {
         }
         if (isContract) {
             require(
-                IERC1271.MAGICVALUE ==
-                    IERC1271(owner).isValidSignature(_hash, _signature)
+                _ERC1271_MAGICVALUE ==
+                    ERC1271(owner).isValidSignature(_hash, _signature)
             );
             nonce[owner]++;
             return owner;
