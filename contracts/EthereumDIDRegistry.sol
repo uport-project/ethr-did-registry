@@ -1,5 +1,10 @@
 pragma solidity ^0.5.16;
 
+import "./IERC1271.sol";
+
+// libraries
+import "@openzeppelin/contracts/cryptography/ECDSA.sol";
+
 contract EthereumDIDRegistry {
   
   mapping(address => address) public owners;
@@ -48,6 +53,39 @@ contract EthereumDIDRegistry {
     nonce[signer]++;
     return signer;
   }
+
+    /**
+     * @notice Checks if an identity's owner had provided a valid `_signature` for `_hash`.
+     * If the identity's owner is a smart contract, the 'isValidSignature' will be called accourding to ERC1271 interface.
+     *
+     * @param _hash hash of the data signed//Arbitrary length data signed on the behalf of `identity`
+     * @param _signature identity's signature(s) of the data
+     */
+    function checkSignature(
+        address identity,
+        bytes32 _hash,
+        bytes memory _signature
+    ) internal returns (address) {
+        address owner = identityOwner(identity);
+        bool isContract;
+        // solium-disable-next-line security/no-inline-assembly
+        assembly {
+            isContract := gt(extcodesize(owner), 0)
+        }
+        if (isContract) {
+            require(
+                IERC1271.MAGICVALUE ==
+                    IERC1271(owner).isValidSignature(_hash, _signature)
+            );
+            nonce[owner]++;
+            return owner;
+        } else {
+            address signer = ECDSA.recover(_hash, _signature);
+            require(signer == identityOwner(identity));
+            nonce[signer]++;
+            return signer;
+        }
+    }
 
   function validDelegate(address identity, bytes32 delegateType, address delegate) public view returns(bool) {
     uint validity = delegates[identity][keccak256(abi.encodePacked(delegateType))][delegate];
