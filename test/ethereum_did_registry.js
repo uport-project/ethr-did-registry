@@ -1,10 +1,13 @@
 var ethutil = require("ethereumjs-util");
 var sha3 = require("js-sha3").keccak_256;
 var EthereumDIDRegistry = artifacts.require("./EthereumDIDRegistry.sol");
+var ERC1271Sample = artifacts.require("./ERC1271Sample.sol");
 var BN = require("bn.js");
 
 contract("EthereumDIDRegistry", function(accounts) {
   let didReg;
+  let erc1271Sample1;
+  let erc1271Sample2;
   const identity = web3.utils.toChecksumAddress(accounts[0]);
   let owner;
   let previousChange;
@@ -30,6 +33,8 @@ contract("EthereumDIDRegistry", function(accounts) {
   // console.log({identity,identity2, delegate, delegate2, badboy})
   before(async () => {
     didReg = await EthereumDIDRegistry.deployed();
+    erc1271Sample1 = await ERC1271Sample.deployed();
+    erc1271Sample2 = await ERC1271Sample.new();
   });
   function getBlock(blockNumber) {
     return new Promise((resolve, reject) => {
@@ -88,6 +93,8 @@ contract("EthereumDIDRegistry", function(accounts) {
     //  both provided a dirrerent signature.
     const composedSignature = "0x" + signature.r.toString("hex") + signature.s.toString("hex") + web3.utils.toHex(signature.v).substring(2)
     
+    erc1271Sample1.addSignature(hash, composedSignature)
+    
     const publicKey = ethutil.ecrecover(
       hash,
       signature.v,
@@ -100,6 +107,33 @@ contract("EthereumDIDRegistry", function(accounts) {
       v: signature.v,
       signature: composedSignature,
     };
+  }
+  async function addContractSignature(identity, ownerERC1271Instance, data) {
+    // // The next `key` is an arbitrary value because the sample ERC1271 contract 
+    // //  Accept any data  
+    // const key = privateKey;
+
+    const signer = ownerERC1271Instance.address;
+    const nonce = await didReg.nonce(signer);
+    const paddedNonce = leftPad(Buffer.from([nonce], 64).toString("hex"));
+    const dataToSign =
+      "1900" +
+      stripHexPrefix(didReg.address) +
+      paddedNonce +
+      stripHexPrefix(identity) +
+      data;
+    const hash = Buffer.from(sha3.buffer(Buffer.from(dataToSign, "hex")));
+
+    // We can use any signature as a signature here because the ERC1271Sample 
+    //  accepts any signature as signature as long as it is provided by the contract owner
+    const genRanHex = size => "0x"+ [...Array(size)].map(() => Math.floor(Math.random() * 16).toString(16)).join('');
+    const randomSignature = genRanHex(32);
+    
+    ownerERC1271Instance.addSignature(hash, randomSignature);
+    
+    return {
+      signature: randomSignature,
+    };    
   }
 
   describe("identityOwner()", () => {
@@ -246,24 +280,25 @@ contract("EthereumDIDRegistry", function(accounts) {
     describe("using composed signature", () => {
       describe("as current owner", () => {
         let tx;
+        const newOwner = signerAddress;
         before(async () => {
           const sig = await signData(
             signerAddress2,
             signerAddress2,
             privateKey2,
             Buffer.from("changeOwner").toString("hex") +
-              stripHexPrefix(signerAddress)
+              stripHexPrefix(newOwner)
           );
           tx = await didReg.methods['changeOwnerSigned(address,bytes,address)'](
             signerAddress2,
             sig.signature,
-            signerAddress,
+            newOwner,
             { from: badboy }
           );
         });
         it("should change owner mapping", async () => {
           const owner2 = await didReg.owners(signerAddress2);
-          assert.equal(owner2, signerAddress);
+          assert.equal(owner2, newOwner);
         });
         it("should sets changed to transaction block", async () => {
           const latest = await didReg.changed(signerAddress2);
@@ -274,7 +309,45 @@ contract("EthereumDIDRegistry", function(accounts) {
           // console.log(event.args)
           assert.equal(event.event, "DIDOwnerChanged");
           assert.equal(event.args.identity, signerAddress2);
-          assert.equal(event.args.owner, signerAddress);
+          assert.equal(event.args.owner, newOwner);
+          assert.equal(event.args.previousChange.toNumber(), 0);
+        });
+      });
+    });
+    describe("using smart contract signature", () => {
+      describe("as current owner", () => {
+        let tx;
+        const identityAddress = ERC1271Sample.address;
+        let newOwner;
+        before(async () => {
+          newOwner = erc1271Sample2.address;
+          const sig = await addContractSignature(
+            identityAddress,
+            erc1271Sample1,
+            Buffer.from("changeOwner").toString("hex") +
+              stripHexPrefix(newOwner)
+          );
+          tx = await didReg.methods['changeOwnerSigned(address,bytes,address)'](
+            identityAddress,
+            sig.signature,
+            newOwner,
+            { from: badboy }
+          );
+        });
+        it("should change owner mapping", async () => {
+          const owner2 = await didReg.owners(identityAddress);
+          assert.equal(owner2, newOwner);
+        });
+        it("should sets changed to transaction block", async () => {
+          const latest = await didReg.changed(identityAddress);
+          assert.equal(latest, tx.receipt.blockNumber);
+        });
+        it("should create DIDOwnerChanged event", () => {
+          const event = tx.logs[0];
+          // console.log(event.args)
+          assert.equal(event.event, "DIDOwnerChanged");
+          assert.equal(event.args.identity, identityAddress);
+          assert.equal(event.args.owner, newOwner);
           assert.equal(event.args.previousChange.toNumber(), 0);
         });
       });
@@ -414,11 +487,13 @@ contract("EthereumDIDRegistry", function(accounts) {
         let block1;
         let previousChange1;
         const delegateType = "attestor";
+        const identityAddress = signerAddress;
+        const owner = signerAddress2;
         before(async () => {
-          previousChange1 = await didReg.changed(signerAddress);
+          previousChange1 = await didReg.changed(identityAddress);
           let sig = await signData(
-            signerAddress,
-            signerAddress2,
+            identityAddress,
+            owner,
             privateKey2,
             Buffer.from("addDelegate").toString("hex") +
               stringToBytes32(delegateType) +
@@ -426,7 +501,7 @@ contract("EthereumDIDRegistry", function(accounts) {
               leftPad(new BN(86400).toString(16))
           );
           tx1 = await didReg.methods['addDelegateSigned(address,bytes,bytes32,address,uint256)'](
-            signerAddress,
+            identityAddress,
             sig.signature,
             web3.utils.asciiToHex(delegateType),
             delegate,
@@ -437,20 +512,73 @@ contract("EthereumDIDRegistry", function(accounts) {
         });
         it("validDelegate should be true", async () => {
           let valid = await didReg.validDelegate(
-            signerAddress,
+            identityAddress,
             web3.utils.asciiToHex(delegateType),
             delegate
           );
           assert.equal(valid, true, "assigned delegate correctly");
         });
         it("should sets changed to transaction block", async () => {
-          const latest = await didReg.changed(signerAddress);
+          const latest = await didReg.changed(identityAddress);
           assert.equal(latest.toNumber(), tx1.receipt.blockNumber);
         });
         it("should create DIDDelegateChanged event", () => {
           let event = tx1.logs[0];
           assert.equal(event.event, "DIDDelegateChanged");
-          assert.equal(event.args.identity, signerAddress);
+          assert.equal(event.args.identity, identityAddress);
+          assert.equal(bytes32ToString(event.args.delegateType), delegateType);
+          assert.equal(event.args.delegate, delegate);
+          assert.equal(event.args.validTo.toNumber(), block1.timestamp + 86400);
+          assert.equal(
+            event.args.previousChange.toNumber(),
+            previousChange1.toNumber()
+          );
+        });
+      });
+    });
+    describe("using smart contract signature", () => {
+      describe("as current owner", () => {
+        let tx1;
+        let block1;
+        let previousChange1;
+        const identityAddress = ERC1271Sample.address;
+        const delegateType = "attestor";
+        before(async () => {
+          previousChange1 = await didReg.changed(identityAddress);
+          let sig = await addContractSignature(
+            identityAddress,
+            erc1271Sample2,
+            Buffer.from("addDelegate").toString("hex") +
+              stringToBytes32(delegateType) +
+              stripHexPrefix(delegate) +
+              leftPad(new BN(86400).toString(16))
+          );
+          tx1 = await didReg.methods['addDelegateSigned(address,bytes,bytes32,address,uint256)'](
+            identityAddress,
+            sig.signature,
+            web3.utils.asciiToHex(delegateType),
+            delegate,
+            86400,
+            { from: badboy }
+          );
+          block1 = await getBlock(tx1.receipt.blockNumber);
+        });
+        it("validDelegate should be true", async () => {
+          let valid = await didReg.validDelegate(
+            identityAddress,
+            web3.utils.asciiToHex(delegateType),
+            delegate
+          );
+          assert.equal(valid, true, "assigned delegate correctly");
+        });
+        it("should sets changed to transaction block", async () => {
+          const latest = await didReg.changed(identityAddress);
+          assert.equal(latest.toNumber(), tx1.receipt.blockNumber);
+        });
+        it("should create DIDDelegateChanged event", () => {
+          let event = tx1.logs[0];
+          assert.equal(event.event, "DIDDelegateChanged");
+          assert.equal(event.args.identity, identityAddress);
           assert.equal(bytes32ToString(event.args.delegateType), delegateType);
           assert.equal(event.args.delegate, delegate);
           assert.equal(event.args.validTo.toNumber(), block1.timestamp + 86400);
@@ -635,6 +763,58 @@ contract("EthereumDIDRegistry", function(accounts) {
         });
       });
     });
+    describe("using smart contract signature", () => {
+      describe("as current owner", () => {
+        let tx;
+        const delegateType = "attestor";
+        const identityAddress = ERC1271Sample.address;
+        before(async () => {
+          previousChange = await didReg.changed(identityAddress);
+          const sig = await addContractSignature(
+            identityAddress,
+            erc1271Sample2,
+            Buffer.from("revokeDelegate").toString("hex") +
+              stringToBytes32(delegateType) +
+              stripHexPrefix(delegate)
+          );
+          tx = await didReg.methods['revokeDelegateSigned(address,bytes,bytes32,address)'](
+            identityAddress,
+            sig.signature,
+            web3.utils.asciiToHex(delegateType),
+            delegate,
+            { from: badboy }
+          );
+          block = await getBlock(tx.receipt.blockNumber);
+        });
+        it("validDelegate should be false", async () => {
+          const valid = await didReg.validDelegate(
+            identityAddress,
+            web3.utils.asciiToHex(delegateType),
+            delegate
+          );
+          assert.equal(valid, false, "revoked delegate correctly");
+        });
+        it("should sets changed to transaction block", async () => {
+          const latest = await didReg.changed(identityAddress);
+          assert.equal(latest, tx.receipt.blockNumber);
+        });
+        it("should create DIDDelegateChanged event", () => {
+          const event = tx.logs[0];
+          assert.equal(event.event, "DIDDelegateChanged");
+          assert.equal(event.args.identity, identityAddress);
+          assert.equal(bytes32ToString(event.args.delegateType), delegateType);
+          assert.equal(event.args.delegate, delegate);
+          assert.isBelow(
+            event.args.validTo.toNumber(),
+            Math.floor(Date.now() / 1000) + 1
+          );
+          assert.equal(
+            event.args.previousChange.toNumber(),
+            previousChange.toNumber()
+          );
+        });
+      });
+    });
   });
 
   describe("setAttribute()", () => {
@@ -779,6 +959,49 @@ contract("EthereumDIDRegistry", function(accounts) {
         });
       });
     });
+    describe("using smart contract signature", () => {
+      describe("as current owner", () => {
+        let tx;
+        const attributeName = "encryptionKey";
+        const identityAddress = ERC1271Sample.address;
+        before(async () => {
+          previousChange = await didReg.changed(identityAddress);
+          const sig = await addContractSignature(
+            identityAddress,
+            erc1271Sample2,
+            Buffer.from("setAttribute").toString("hex") +
+              stringToBytes32(attributeName) +
+              Buffer.from("mykey").toString("hex") +
+              leftPad(new BN(86400).toString(16))
+          );
+          tx = await didReg.methods['setAttributeSigned(address,bytes,bytes32,bytes,uint256)'](
+            identityAddress,
+            sig.signature,
+            web3.utils.asciiToHex(attributeName),
+            web3.utils.asciiToHex("mykey"),
+            86400,
+            { from: badboy }
+          );
+          block = await getBlock(tx.receipt.blockNumber);
+        });
+        it("should sets changed to transaction block", async () => {
+          const latest = await didReg.changed(identityAddress);
+          assert.equal(latest, tx.receipt.blockNumber);
+        });
+        it("should create DIDDelegateChanged event", () => {
+          const event = tx.logs[0];
+          assert.equal(event.event, "DIDAttributeChanged");
+          assert.equal(event.args.identity, identityAddress);
+          assert.equal(bytes32ToString(event.args.name), attributeName);
+          assert.equal(event.args.value, "0x6d796b6579");
+          assert.equal(event.args.validTo.toNumber(), block.timestamp + 86400);
+          assert.equal(
+            event.args.previousChange.toNumber(),
+            previousChange.toNumber()
+          );
+        });
+      });
+    });
   });
 
   describe("revokeAttribute()", () => {
@@ -907,6 +1130,47 @@ contract("EthereumDIDRegistry", function(accounts) {
           const event = tx.logs[0];
           assert.equal(event.event, "DIDAttributeChanged");
           assert.equal(event.args.identity, signerAddress);
+          assert.equal(bytes32ToString(event.args.name), attributeName);
+          assert.equal(event.args.value, "0x6d796b6579");
+          assert.equal(event.args.validTo.toNumber(), 0);
+          assert.equal(
+            event.args.previousChange.toNumber(),
+            previousChange.toNumber()
+          );
+        });
+      });
+    });
+    describe("using smart contract signature", () => {
+      describe("as current owner", () => {
+        let tx;
+        const attributeName = "encryptionKey";
+        const identityAddress = ERC1271Sample.address;
+        before(async () => {
+          previousChange = await didReg.changed(identityAddress);
+          const sig = await addContractSignature(
+            identityAddress,
+            erc1271Sample2,
+            Buffer.from("revokeAttribute").toString("hex") +
+              stringToBytes32(attributeName) +
+              Buffer.from("mykey").toString("hex")
+          );
+          tx = await didReg.methods['revokeAttributeSigned(address,bytes,bytes32,bytes)'](
+            identityAddress,
+            sig.signature,
+            web3.utils.asciiToHex(attributeName),
+            web3.utils.asciiToHex("mykey"),
+            { from: badboy }
+          );
+          block = await getBlock(tx.receipt.blockNumber);
+        });
+        it("should sets changed to transaction block", async () => {
+          const latest = await didReg.changed(identityAddress);
+          assert.equal(latest, tx.receipt.blockNumber);
+        });
+        it("should create DIDDelegateChanged event", () => {
+          const event = tx.logs[0];
+          assert.equal(event.event, "DIDAttributeChanged");
+          assert.equal(event.args.identity, identityAddress);
           assert.equal(bytes32ToString(event.args.name), attributeName);
           assert.equal(event.args.value, "0x6d796b6579");
           assert.equal(event.args.validTo.toNumber(), 0);
