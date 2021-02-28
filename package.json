@@ -6,7 +6,9 @@
   "directories": {
     "test": "test"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@openzeppelin/contracts": "^2.3.0"
+  },
   "devDependencies": {
     "ethereumjs-tx": "^1.3.4",
     "ethereumjs-util": "^5.1.5",
@@ -14,7 +16,7 @@
     "js-sha3": "^0.7.0",
     "ls": "^0.2.1",
     "solhint": "^1.1.10",
-    "truffle": "^4.1.6",
+    "truffle": "^5.1.43",
     "truffle-hdwallet-provider": "^1.0.6"
   },
   "scripts": {
