@@ -30,7 +30,7 @@ off-chain usage.
 
 > WARNING
 > These are deployments of version 0.0.3 of the contract and they do not include recent updates.
-> Join the discussion as to how to adopt these new changes [on our discord](https://discord.gg/mHfJMtrq)
+> Join the discussion as to how to adopt these new changes [on our discord](https://discord.gg/MTeTAwSYe7)
 
 | Network                             | Address                                                                                                                                  |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
