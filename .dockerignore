@@ -1,0 +1,8 @@
+.git/
+cache/
+artifacts/
+lib/
+build/
+typechain/
+typechain-types/
+dist/
