@@ -44,7 +44,7 @@ export const deployments: EthrDidRegistryDeployment[] = [
   {
     chainId: 17000,
     registry: '0x03d5003bf0e79C5F5223588F347ebA39AfbC3818',
-    name: 'holešky',
+    name: 'holesky',
     description: 'ethereum infrastructure and core protocol upgrades testnet',
   },
 ]
