@@ -47,4 +47,10 @@ export const deployments: EthrDidRegistryDeployment[] = [
     name: 'holesky',
     description: 'ethereum infrastructure and core protocol upgrades testnet',
   },
+  {
+    chainId: 59141,
+    registry: '0x03d5003bf0e79C5F5223588F347ebA39AfbC3818',
+    name: 'linea:sepolia',
+    description: 'ConsenSys Linea L2 zkEVM testnet',
+  },
 ]
